@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 
 import yaml
@@ -7,6 +8,8 @@ from django.http import HttpResponseBadRequest, HttpResponse, JsonResponse
 from django.urls import reverse_lazy
 from django.views import View
 from django.views.generic import TemplateView, FormView
+from msnm.modules.com.packet import DataPacket, Packet
+from msnm.utils import dateutils
 
 from mainboard.config import EXAMPLE_ROOT, GRAPH_SIZE, MONITORING_ROOT, SYNC_SECONDS
 from mainboard.utils import get_monitoring, update_context_data_network
@@ -94,6 +97,20 @@ class SaveConfView(LoginRequiredMixin, View):
         if not request.is_ajax():
             return HttpResponseBadRequest()
         sid = self.kwargs['sid']
+        # Send the data packet to the corresponding sensor.
+        dataPacket = DataPacket()
+        dataPacket.fill_header(
+            {'sid': sid, 'ts': dateutils.get_timestamp(),
+             'type': Packet.TYPE_D})
+        dataPacket.fill_body()
+
+        for i in remote_addresses.keys():
+            ip = remote_addresses[i]['ip']
+            port = remote_addresses[i]['port']
+            tcpClient = TCPClient()
+            tcpClient.set_server_address((ip, port))
+            tcpClient.set_packet_to_send(dataPacket)
+            TCPClientThread(tcpClient).start()
         stream = open(os.path.join(EXAMPLE_ROOT, sid + '.yaml'), 'r')
         conf = yaml.load(stream, Loader=yaml.FullLoader)
         data = conf['Sensor']
